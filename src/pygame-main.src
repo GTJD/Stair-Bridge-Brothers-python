@@ -1,0 +1,161 @@
+# Main game script all code is in here (for now)
+
+import pygame, sys, time, random, logging, argparse
+from pygame.locals import *
+
+#### Parse Args ####
+parser = argparse.ArgumentParser()
+parser.add_argument('--loglevel', '-l', default="ERROR")
+args = parser.parse_args()
+
+#### Setup Logging ####
+loglevel = args.loglevel
+numeric_level = getattr(logging, loglevel.upper(), None)
+if not isinstance(numeric_level, int):
+    raise ValueError('Invalid log level: %s' % loglevel)
+logging.basicConfig(level=numeric_level)
+
+#### Global Constants ####
+logging.info('Initializing game')
+
+WINDOW_WIDTH = 600
+WINDOW_HEIGHT = 400
+WINDOW_TITLE = "Stair Bridge Bros."
+
+FRAME_RATE = 60
+
+# set up the colours
+BLACK = pygame.Color(0, 0, 0)
+WHITE = pygame.Color(255, 255, 255)
+
+BACKGROUND_COLOR = BLACK
+TILE_COLOR = WHITE
+
+# set up inputs
+INPUTS = {
+        'quit': K_ESCAPE,
+
+        'p1': {
+            'left': K_LEFT,
+            'right': K_RIGHT
+        }
+}
+
+#### Game Logic ####
+
+# set up pygame
+pygame.init()
+mainClock = pygame.time.Clock()
+
+# set up the window
+windowSurface = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), 0, 32)
+pygame.display.set_caption(WINDOW_TITLE)
+
+# setup inital game state
+state = {
+    'quit': False,
+
+    'p1': {
+        'left': False,
+        'right': False,
+        'position': (0,2)
+    },
+
+    'world': [
+        [0,0,0,0,0],
+        [0,0,0,1,1],
+        [0,0,1,1,1],
+        [1,1,1,1,1]
+    ],
+
+    'scale': 20
+
+}
+
+# run the game loop
+def main(state, windowSurface):
+    while True:
+
+        handle_events(pygame.event, state)
+        handle_logic(state)
+        draw(state, windowSurface)
+
+        check_quit(state)
+
+        mainClock.tick(FRAME_RATE)
+        
+# Update state vraiables based on generated events
+# This includes user input and OS events
+def handle_events(events, state):
+    for event in events.get():
+
+        logging.debug(event)
+
+        # check for the QUIT event
+        if event.type == QUIT:
+            state['quit'] = True
+
+        if event.type == KEYDOWN:
+            if event.key == INPUTS['p1']['left']:
+                state['p1']['left'] = True
+            if event.key == INPUTS['p1']['right']:
+                state['p1']['right'] = True
+
+        if event.type == KEYUP:
+            if event.key == INPUTS['quit']:
+                state['quit'] = True
+            if event.key == INPUTS['p1']['left']:
+                state['p1']['left'] = False 
+            if event.key == INPUTS['p1']['right']:
+                state['p1']['right'] = False
+
+        if event.type == MOUSEBUTTONDOWN:
+            return
+
+        if event.type == MOUSEBUTTONUP:
+            return
+
+# Tick the game state forward on frame
+def handle_logic(state):
+    # move players based on input
+    if state['p1']['left']:
+        state['p1']['position'] += (-1 ,0)
+    if state['p1']['right']:
+        state['p1']['position'] += (1 ,0)
+        logging.debug(state['p1']['position'])
+
+# Draw the current game state
+def draw(state, windowSurface):
+    # draw the black background onto the surface
+    windowSurface.fill(BACKGROUND_COLOR)
+
+    scale = state['scale']
+
+    # draw world
+    for y, row in enumerate(state['world']):
+        for x, tile in enumerate(row):
+            if tile == 1:
+                pygame.draw.rect(windowSurface, TILE_COLOR, (x * scale, y * scale, scale, scale))
+
+    # draw players
+    player_pos = state['p1']['position']
+    player_rect = (player_pos[0] * scale, player_pos[1] * scale, scale ,scale)
+    pygame.draw.rect(windowSurface, TILE_COLOR, player_rect)
+
+    # draw the window onto the screen
+    pygame.display.update()
+
+# Check if the game state is ready to quit
+def check_quit(state):
+    if (state['quit']):
+        quit(state)
+
+# Make all final preperations to quit the game
+def quit(state):
+    logging.info('Quitting game')
+    pygame.quit()
+    sys.exit()
+
+# Start the game
+logging.info('Starting game')
+main(state, windowSurface)

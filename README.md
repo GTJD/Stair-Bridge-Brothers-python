@@ -1,5 +1,5 @@
-Stair-Bridge-Brothers-python
-============================
+Stair Bridge Bros.
+==================
 
 Game created for Winnipeg Science Rendezvous 2014. Work as a team to get the next checkpoint before time runs out!
 
@@ -29,8 +29,8 @@ Controls
 
 These are all likely temporary and will nedd further work.
 
-`r` restart game
+- `r` restart game
 
-`left` and `right` move red character
-`space` jump red character
-`f` freeze red character
+- `left` and `right` move red character
+- `space` jump red character
+- `f` freeze red character

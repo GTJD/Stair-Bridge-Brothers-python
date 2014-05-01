@@ -2,9 +2,12 @@ import pyglet
 import pymunk
 import rabbyt
 
+from OpenGL.GL import *
+
 import random
 
 from collections import deque
+from operator import attrgetter
 from math import degrees
 
 from game import resources
@@ -34,7 +37,84 @@ class Player(object):
 
 # An object with a sprite and presence in the physucs space
 class Entity(rabbyt.Sprite):
-    pass
+
+    @property
+    def static(self):
+        return self._static
+
+    @static.setter
+    def static(self, val):
+        # Check if value is changes
+        if self.static != val:
+            self._static = val
+            if self.static:
+                self._set_static()
+                # remove body from physics space and make it static
+                self.space.remove(self.pymunk_body)
+            else:
+                self._set_dynamic()
+                # add body to physics space and make dynamic
+                self.space.add(self.pymunk_body)
+
+    def _set_static(self):
+        self.pymunk_body.velocity = 0, 0
+        self.pymunk_body.angular_velocity = 0
+        self.pymunk_body.mass = pymunk.inf
+        self.pymunk_body.moment = pymunk.inf
+
+    def _set_dynamic(self):
+        self.pymunk_body.mass = self._mass
+        self.pymunk_body.moment = self._moment
+
+    def __init__(self, 
+            space, 
+            friction = pymunk.inf,
+            mass = pymunk.inf,
+            width = 0,
+            height = 0,
+            x = 0,
+            y = 0,
+            angle = 0,
+            static = False, 
+            *args, **kwargs):
+
+        super(Entity, self).__init__(*args, **kwargs)
+
+        # Physics setup
+        self.space = space
+        self._mass = mass
+        self._moment = pymunk.moment_for_box(mass, width, height)
+
+        # body
+        body = pymunk.Body(self._mass, self._moment)
+        body.position = x, y
+        body.angle = angle
+
+        # shape
+        hw = width // 2
+        hh = height // 2
+        vs = [(-hw, hh), (hw, hh), (hw, -hh), (-hw, -hh)]
+        shape = pymunk.Poly(body, vs)
+        shape.friction = friction
+        space.add(shape)
+
+        self.pymunk_shape = shape
+        self.pymunk_body = body
+        if static: self._set_static()
+
+        # force static state update if not static
+        self._static = True
+        self.static = static
+
+    def update(self, dt):
+        self.x = self.pymunk_body.position.x
+        self.y = self.pymunk_body.position.y
+        self.rot = degrees(self.pymunk_body.angle)
+
+    def remove_from_space(self):
+        self.space.remove(self.pymunk_shape)
+        if not self.static:
+            self.space.remove(self.pymunk_body)
 
 # An avatar controlled by a Player
 class Bro(Entity):
@@ -68,32 +148,19 @@ class Bro(Entity):
         self.blue = 1
 
     def __init__(self, player, space, x=0, y=100, *args, **kwargs):
-        super(Bro, self).__init__(texture=resources.box)
+        super(Bro, self).__init__(space, 
+                x = x,
+                y = y,
+                mass = Bro.MASS,
+                friction = Bro.FRICTION,
+                width = Bro.SIZE,
+                height = Bro.SIZE,
+                texture = resources.box)
         self.player = player
         self.color = player.color
         self.dead = False
         self.frozen = False
-        self.space = space
         self.player.bros.append(self)
-
-        # Physics setup
-        angle = 0
-        mass = Bro.MASS
-        width = Bro.SIZE
-        height = Bro.SIZE
-        moment = pymunk.moment_for_box(mass, width, height)
-        body = pymunk.Body(mass, moment)
-        hw = Bro.SIZE // 2
-        vs = [(-hw, hw), (hw, hw), (hw, -hw), (-hw, -hw)]
-        shape = pymunk.Poly(body, vs)
-        shape.friction = Bro.FRICTION
-        body.position = x, y
-        body.angle = angle
-
-        space.add(body, shape)
-
-        self.pymunk_shape = shape
-        self.pymunk_body = body
 
         # Model state
         self.jumping = False
@@ -101,10 +168,9 @@ class Bro(Entity):
         self.moving_right = False
 
     def update(self, dt):
-        self.x = self.pymunk_body.position.x
-        self.y = self.pymunk_body.position.y
-        self.rot = degrees(self.pymunk_body.angle)
+        super(Bro, self).update(dt)
 
+        # Move based on input
         if self.moving_left:
             target_velocity = -Bro.SPEED
         elif self.moving_right:
@@ -119,20 +185,19 @@ class Bro(Entity):
 
     def freeze(self):
         self.frozen = True
+        self.static = True
         self.player.freezes += 1
 
-        # make sprite transparent
-        #self.alpha = Bro.FROZEN_OPACITY
+        self.stop()
+
+        # Fade sprite
         self.red += Bro.FREEZE_FADE
         self.green += Bro.FREEZE_FADE 
         self.blue += Bro.FREEZE_FADE
 
-        # remove body from physics space and make it static
-        self.space.remove(self.pymunk_body)
-        self.pymunk_body.velocity = 0, 0
-        self.pymunk_body.angular_velocity = 0
-        self.pymunk_body.mass = pymunk.inf
-        self.pymunk_body.moment = pymunk.inf
+    def drop(self):
+        if self.frozen:
+            self.static = False
 
     def die(self):
         self.dead = True
@@ -159,6 +224,10 @@ class Bro(Entity):
     def stop_left(self):
         self.moving_left = False
 
+    def stop(self):
+        self.stop_right()
+        self.stop_left()
+
 # A Bro's color
 class Color(object):
 
@@ -180,6 +249,7 @@ Color.YELLOW = Color(1, 1, 0.25)
 # A single tile making up the world
 class Tile(Entity):
 
+    MASS = 20
     FRICTION = 0.5
     SIZE = 32
 
@@ -188,23 +258,22 @@ class Tile(Entity):
     BRIGHTNESS_MIN = 0.7
     BRIGHTNESS_RANGE = 1.0 - BRIGHTNESS_MIN
 
+    DROP_IMPULSES = [ (100, 0), (-100,0) ]
+
+    DROP_OFFSET = (0, SIZE // 2)
+
     def __init__(self, x, y, space, *args, **kwargs):
         self.space = space
-        super(Tile, self).__init__(texture=resources.box)
-
-        # Physics setup
-        x *= Tile.SIZE
-        y *= Tile.SIZE
-        angle = 0
-        width = Tile.SIZE
-        height = Tile.SIZE
-        body = pymunk.Body()
-        hw = Tile.SIZE // 2
-        vs = [(-hw, hw), (hw, hw), (hw, -hw), (-hw, -hw)]
-        shape = pymunk.Poly(body, vs)
-        shape.friction = Tile.FRICTION
-        body.position = x, y
-        body.angle = angle
+        super(Tile, self).__init__(space,
+                x = x * Tile.SIZE,
+                y = y * Tile.SIZE,
+                angle = 0,
+                width = Tile.SIZE,
+                height = Tile.SIZE,
+                friction = Tile.FRICTION,
+                mass = Tile.MASS,
+                static = True,
+                texture=resources.box)
 
         # random colour
         if random.random() < Tile.WHITE_RATIO:
@@ -213,19 +282,12 @@ class Tile(Entity):
             self.green = brightness
             self.blue = brightness
 
-        space.add(shape)
-
-        self.pymunk_shape = shape
-        self.pymunk_body = body
-
-        self.x = self.pymunk_body.position.x
-        self.y = self.pymunk_body.position.y
-
-    def update(self, dt):
-        pass
+    def drop(self):
+        self.static = False
+        self.pymunk_body.apply_impulse(random.choice(Tile.DROP_IMPULSES), Tile.DROP_OFFSET)
 
 # A goal that players reach at the end of a Section
-class CheckPoint(rabbyt.sprites.Sprite):
+class CheckPoint(Entity):
 
     def __init__(self, *args, **kwargs):
         self.complete = False
@@ -245,6 +307,26 @@ class Section(object):
             [0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0],
             [0,0,0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0],
             [1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1],
+        ],
+        [
+            [0,0,0,0,0,1,0,0,0],
+            [0,0,0,0,0,1,0,0,0],
+            [0,0,0,0,0,1,0,0,0],
+            [0,0,0,0,0,1,0,0,0],
+            [1,1,1,1,1,1,0,1,1],
+        ],
+        [
+            [0,0,0,0,0,1,1,1,0],
+            [0,0,0,0,0,1,1,1,0],
+            [0,0,0,0,0,1,1,1,1],
+            [0,0,0,0,0,1,1,1,1],
+            [0,0,0,0,0,1,1,1,1],
+            [0,0,0,0,0,0,0,1,1],
+            [0,0,0,0,0,1,0,1,1],
+            [0,0,0,0,0,1,0,1,1],
+            [0,0,0,0,0,1,0,1,1],
+            [0,0,0,0,0,1,0,0,0],
+            [1,1,1,1,1,1,0,1,1],
         ]
     ]
 
@@ -268,7 +350,13 @@ class Section(object):
     def complete(self):
         self.check_point.complete = True
 
+    def first_tile_offset(self):
+        min_tile = min(self.tiles, key = attrgetter('x'))
+        return min_tile.x
+
 class SSBGame(pyglet.window.Window):
+
+    BACKGROUND = pyglet.image.TileableTexture.create_for_image(resources.background)
 
     COLORS = [Color.RED, Color.BLUE, Color.YELLOW]
 
@@ -283,9 +371,19 @@ class SSBGame(pyglet.window.Window):
 
     SCROLL_RATE = 6
     SCROLL_DELAY = 2
+    DROP_LINE_START = -150
 
-    START_PROJECTION = (-Tile.SIZE, WINDOW_HEIGHT - Tile.SIZE , WINDOW_WIDTH - Tile.SIZE, -Tile.SIZE)
-    PROJECTION_SCROLL = (SCROLL_RATE, 0, SCROLL_RATE, 0)
+    START_PROJECTION_X = -200
+    START_PROJECTION_Y = -32
+    START_PROJECTION = (
+            START_PROJECTION_X, 
+            WINDOW_HEIGHT + START_PROJECTION_Y, 
+            WINDOW_WIDTH + START_PROJECTION_X, 
+            START_PROJECTION_Y)
+
+    STATIC_PROJECTION = (0, WINDOW_HEIGHT, WINDOW_WIDTH, 0)
+
+    PROJECTION_SCROLL = (SCROLL_RATE, 0, SCROLL_RATE, 0) 
 
     SCORE_FONT = 'monospace'
     SCORE_SIZE = 36
@@ -293,6 +391,7 @@ class SSBGame(pyglet.window.Window):
     SCORE_SPACING = (WINDOW_WIDTH / 3)
     SCORE_Y = WINDOW_HEIGHT - 100
 
+    POPULATE_PADDING = 50
 
     def __init__(self, *args, **kwargs):
         super(SSBGame, self).__init__(*args, **kwargs)
@@ -328,16 +427,16 @@ class SSBGame(pyglet.window.Window):
         self.space = pymunk.Space()
         self.space.gravity = SSBGame.GRAVITY
 
-        # Create entities
-        self.entities = []
-        self.bros = []
-        for i, player in enumerate(self.players):
-            self.add_bro(player, y=(i+2)*50)
-
         # Create first section
+        self.entities = []
         self.sections = deque()
         self.current_distance = 0
         self.push_section()
+
+        # Create entities
+        self.bros = []
+        for i, player in enumerate(self.players):
+            self.add_bro(player, y=(i+2)*50)
 
         # track fps
         self.fps_display = pyglet.clock.ClockDisplay()
@@ -347,11 +446,21 @@ class SSBGame(pyglet.window.Window):
 
         # Game state
         self.scroll_delay = SSBGame.SCROLL_DELAY
+        self.drop_line = SSBGame.DROP_LINE_START
 
         # Schedule updating game
         pyglet.clock.schedule(rabbyt.add_time)
         pyglet.clock.schedule(self.update)
         pyglet.clock.schedule_interval(self.update_physics, SSBGame.PHYSICS_FRAMERATE)
+
+    def stop(self):
+        pyglet.clock.unschedule(rabbyt.add_time)
+        pyglet.clock.unschedule(self.update)
+        pyglet.clock.unschedule(self.update_physics)
+
+    def reset(self):
+        self.stop()
+        self.start()
 
     def update(self, dt):
 
@@ -361,28 +470,52 @@ class SSBGame(pyglet.window.Window):
             dscroll = max(0, dt - self.scroll_delay)
         else:
             dscroll = dt
+
         dcamera = SSBGame.get_scroll(dscroll) 
         self.camera = addt(self.camera, dcamera)
+
+        self.drop_line += dscroll * SSBGame.SCROLL_RATE
 
         # update entities
         for entity in self.entities:
             entity.update(dt)
 
         # Kill bros that have fallen
-        for player in self.players:
-            bro = player.active_bro()
-            if bro.y <= SSBGame.DEATH_Y:
+        for bro in self.bros:
+            if bro.y < SSBGame.DEATH_Y:
                 self.kill_bro(bro)
-                self.add_bro(player)
+            elif bro.x < self.drop_line:
+                bro.drop()
 
-        # Drop tiles
+        for tile in self.sections[0].tiles:
+            # Remove fallen tiles
+            if tile.y < SSBGame.DEATH_Y:
+                self.sections[0].tiles.remove(tile)
+                self.entities.remove(tile)
+            # Drop tiles behind drop line
+            elif tile.x < self.drop_line:
+                tile.drop()
+
+        # delete empty sections
+        if len(self.sections[0].tiles) == 0:
+            self.pop_section()
 
         # update score labels
         for player, label in zip(self.players, self.score_labels):
             label.text = str(player.distance)
 
+        # add sections 
+        while self.current_distance * Tile.SIZE < self.populate_distance():
+            self.push_section()
+
     def update_physics(self, dt):
         self.space.step(dt)
+
+    def camera_distance(self):
+        return self.camera[2]
+
+    def populate_distance(self):
+        return self.camera_distance() + SSBGame.POPULATE_PADDING
 
     @staticmethod
     def get_scroll(dt):
@@ -391,12 +524,18 @@ class SSBGame(pyglet.window.Window):
     def on_draw(self):
         rabbyt.clear()
 
+        # Draw background
+        rabbyt.set_viewport(SSBGame.WINDOW_DIM, projection=SSBGame.STATIC_PROJECTION)
+        # reset opengl draw colour
+        glColor(255, 255, 255, 1)
+        SSBGame.BACKGROUND.blit_tiled(0, 0, 0, self.width, self.height)
+
         # Draw transformed sprites
         rabbyt.set_viewport(SSBGame.WINDOW_DIM, projection=self.camera)
         rabbyt.render_unsorted(self.entities)
 
         # Draw static sprites
-        rabbyt.set_viewport(SSBGame.WINDOW_DIM, projection=SSBGame.START_PROJECTION)
+        rabbyt.set_viewport(SSBGame.WINDOW_DIM, projection=SSBGame.STATIC_PROJECTION)
         self.fps_display.draw()
         for label in self.score_labels:
             label.draw()
@@ -421,7 +560,7 @@ class SSBGame(pyglet.window.Window):
         elif symbol == pyglet.window.key.DELETE:
             self.pop_section()
         elif symbol == pyglet.window.key.R:
-            self.start()
+            self.reset()
 
     def on_key_release(self, symbol, modifiers):
         if symbol == pyglet.window.key.LEFT:
@@ -436,7 +575,8 @@ class SSBGame(pyglet.window.Window):
         return p.active_bro()
 
     def add_bro(self, player, y=100):
-        bro = Bro(player, self.space, y=y)
+        x = self.sections[0].first_tile_offset()
+        bro = Bro(player, self.space, x=x, y=y)
         self.entities.append(bro)
         self.bros.append(bro)
 
@@ -444,6 +584,8 @@ class SSBGame(pyglet.window.Window):
         bro.die()
         self.entities.remove(bro)
         self.bros.remove(bro)
+        if not bro.frozen:
+            self.add_bro(bro.player)
 
     def push_section(self):
         section = Section(self.current_distance, self.space)
@@ -456,6 +598,9 @@ class SSBGame(pyglet.window.Window):
         for tile in section.tiles:
             self.entities.remove(tile)
             self.space.remove(tile.pymunk_shape)
+
+    def remove_section(self, section):
+        self.sections.remove(section)
 
 # Start game when running this file 
 if __name__ == '__main__':

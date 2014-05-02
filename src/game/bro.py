@@ -86,9 +86,13 @@ class Bro(entity.Entity):
 
     def die(self):
         self.dead = True
-        self.player.deaths += 1
+        if not self.frozen:
+            self.player.deaths += 1
         # remove body from physics space
         self.space.remove(self.pymunk_body, self.pymunk_shape)
+
+    def alive(self):
+        return not self.dead and not self.frozen
 
     def jump(self):
         #if not self.jumping:

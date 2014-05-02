@@ -10,7 +10,7 @@ class Color(object):
         r = int(self.red * 255)
         g = int(self.green * 255)
         b = int(self.blue * 255)
-        return (r, g, b, 255)
+        return (r, g, b)
 
 RED = Color(1, 0.25, 0.25)
 BLUE = Color(0.25, 0.25, 1)

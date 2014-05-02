@@ -1,14 +1,13 @@
 import pyglet
 import pymunk
 import rabbyt
+import game
 
 from OpenGL.GL import *
 
 from collections import deque
 
-#from game import resources, color, section
-#from game import player as p
-import game
+# Constants
 
 # Add tuple element-wise
 def addt(a, b):
@@ -18,7 +17,7 @@ class Game(pyglet.window.Window):
 
     BACKGROUND = pyglet.image.TileableTexture.create_for_image(game.resources.background)
 
-    COLORS = [game.color.RED, game.color.BLUE, game.color.YELLOW]
+    COLORS = (game.color.RED, game.color.BLUE, game.color.YELLOW)
 
     GRAVITY = (0.0, -500.0)
     PHYSICS_FRAMERATE = 1.0 / 80
@@ -46,12 +45,36 @@ class Game(pyglet.window.Window):
     PROJECTION_SCROLL = (SCROLL_RATE, 0, SCROLL_RATE, 0) 
 
     SCORE_FONT = 'monospace'
+    SCORE_ALIVE_ALPHA =  255
+    SCORE_DEAD_ALPHA = int(0.5 * 255)
     SCORE_SIZE = 36
     SCORE_OFFSET = 50
     SCORE_SPACING = (WINDOW_WIDTH / 3)
     SCORE_Y = WINDOW_HEIGHT - 100
 
     POPULATE_PADDING = 50
+
+    KEY_BINDINGS = {
+            'reset': pyglet.window.key.R,
+            0: {
+                'left': pyglet.window.key.LEFT,
+                'right': pyglet.window.key.RIGHT,
+                'jump': pyglet.window.key.UP,
+                'freeze': pyglet.window.key.DOWN
+                },
+            1: {
+                'left': pyglet.window.key.A,
+                'right': pyglet.window.key.D,
+                'jump': pyglet.window.key.W,
+                'freeze': pyglet.window.key.S
+                },
+            2: {
+                'left': pyglet.window.key.J,
+                'right': pyglet.window.key.L,
+                'jump': pyglet.window.key.I,
+                'freeze': pyglet.window.key.K
+                }
+            }
 
     def __init__(self, *args, **kwargs):
         super(Game, self).__init__(*args, **kwargs)
@@ -62,25 +85,32 @@ class Game(pyglet.window.Window):
         # rabbyt set up
         rabbyt.set_default_attribs()
 
-        self.start()
-
     def start(self):
 
         # Create players
         self.players = []
         self.score_labels = []
         for i, color in enumerate(Game.COLORS):
-            player = game.player.Player(color=color)
+            player = game.player.Player(color)
             self.players.append(player)
+            # player input handlers
+            keys = Game.KEY_BINDINGS[i]
+            player.input_handler = self.create_input_handler(player, 
+                    jump = keys['jump'],
+                    left = keys['left'],
+                    right = keys['right'],
+                    freeze = keys['freeze'])
             # Score Labels
+            label_color = color.tup() + (Game.SCORE_ALIVE_ALPHA,)
             label = pyglet.text.Label('0', 
                         #font_name = Game.SCORE_FONT, 
                         font_size = Game.SCORE_SIZE,
                         bold = True,
-                        color = color.tup(),
+                        color = label_color,
                         x = i * Game.SCORE_SPACING + Game.SCORE_OFFSET,
                         y = Game.SCORE_Y)
             self.score_labels.append(label)
+            player.score_label = label
 
 
         # Create physics space
@@ -113,9 +143,6 @@ class Game(pyglet.window.Window):
         pyglet.clock.schedule(self.update)
         pyglet.clock.schedule_interval(self.update_physics, Game.PHYSICS_FRAMERATE)
 
-        # start pyglet
-        pyglet.app.run()
-
     def stop(self):
         pyglet.clock.unschedule(rabbyt.add_time)
         pyglet.clock.unschedule(self.update)
@@ -124,6 +151,10 @@ class Game(pyglet.window.Window):
     def reset(self):
         self.stop()
         self.start()
+
+    def end(self):
+        print("The game is over we should move to a final score screen")
+        self.reset()
 
     def update(self, dt):
 
@@ -204,34 +235,49 @@ class Game(pyglet.window.Window):
             label.draw()
 
     def on_key_press(self, symbol, modifiers):
-        if symbol == pyglet.window.key.SPACE:
-            bro = self.get_bro(0)
-            if bro: bro.jump()
-        elif symbol == pyglet.window.key.LEFT:
-            bro = self.get_bro(0)
-            if bro: bro.move_left()
-        elif symbol == pyglet.window.key.RIGHT:
-            bro = self.get_bro(0)
-            if bro: bro.move_right()
-        elif symbol == pyglet.window.key.F:
-            bro = self.get_bro(0)
-            if bro: 
-                bro.freeze()
-                self.add_bro(bro.player)
-        elif symbol == pyglet.window.key.S:
-            self.push_section()
-        elif symbol == pyglet.window.key.DELETE:
-            self.pop_section()
-        elif symbol == pyglet.window.key.R:
+        # Global
+        if symbol == Game.KEY_BINDINGS['reset']:
             self.reset()
+        # Player keys
+        else: 
+            for player in self.players:
+                if player.input_handler(True, symbol, modifiers): break
 
     def on_key_release(self, symbol, modifiers):
-        if symbol == pyglet.window.key.LEFT:
-            bro = self.get_bro(0)
-            if bro: bro.stop_left()
-        elif symbol == pyglet.window.key.RIGHT:
-            bro = self.get_bro(0)
-            if bro: bro.stop_right()
+        for player in self.players:
+            if player.input_handler(False, symbol, modifiers): break
+
+    def create_input_handler(self, player, left, right, jump, freeze):
+        def input_handler(pressed, symbol, modifiers):
+            # See if there is a bro to use the input
+            bro = player.active_bro()
+            if bro:
+                # If the key was pressed
+                if pressed:
+                    if symbol == jump:
+                        bro.jump()
+                        return True
+                    elif symbol == left:
+                        bro.move_left()
+                        return True
+                    elif symbol == right:
+                        bro.move_right()
+                        return True
+                    elif symbol == freeze:
+                        self.freeze_bro(bro)
+                        return True
+                # else released key
+                else:
+                    if symbol == left:
+                        bro.stop_left()
+                        return True
+                    elif symbol == right:
+                        bro.stop_right()
+                        return True
+           # fall through if we did not handle the input
+            return False
+
+        return input_handler
 
     def get_bro(self, num):
         p = self.players[0]
@@ -244,11 +290,26 @@ class Game(pyglet.window.Window):
         self.bros.append(bro)
 
     def kill_bro(self, bro):
-        bro.die()
         self.entities.remove(bro)
         self.bros.remove(bro)
-        if not bro.frozen:
-            self.add_bro(bro.player)
+        if bro.alive():
+            bro.die()
+            # Change label color
+            player = bro.player
+            player.score_label.color = player.color.tup() + (Game.SCORE_DEAD_ALPHA,)
+        # Check if this was the last bro standing
+        if not self.bros_remaining():
+            self.end()
+
+    def bros_remaining(self):
+        for player in self.players:
+            if player.active_bro() is not None:
+                return True
+        return False
+
+    def freeze_bro(self, bro):
+        bro.freeze()
+        self.add_bro(bro.player)
 
     def push_section(self):
         section = game.section.Section(self.current_distance, self.space)
@@ -267,6 +328,6 @@ class Game(pyglet.window.Window):
 
 # Start game when running this file 
 if __name__ == '__main__':
-    game = Game()
-    game.start()
+    g = Game()
+    g.start()
     pyglet.app.run()

@@ -10,7 +10,7 @@ The game was made with Python 2.7, it may work with 3+ if you can get all the li
 
 The following packages will need to be installed prior to running. 
 
-Chances are if you are running Ubuntu all of these can be installed using the apt-get
+Chances are if you are running Ubuntu all of these can be installed using  apt-get
 
     sudo apt-get install python-rabbyt ...
 
@@ -31,6 +31,18 @@ These are all likely temporary and will nedd further work.
 
 - `r` restart game
 
-- `left` and `right` move red character
-- `space` jump red character
-- `f` freeze red character
+Red
+
+- `left` and `right` move
+- `up` jump
+- `down` freeze
+
+Blue
+- `a` and `d` move
+- `w` jump
+- `s` freeze
+
+Yellow
+- `j` and `l` move
+- `i` jump
+- `k` freeze

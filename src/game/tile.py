@@ -19,6 +19,8 @@ class Tile(entity.Entity):
 
     DROP_OFFSET = (0, SIZE // 2)
 
+    COLLISION_TYPE = 1
+
     def __init__(self, x, y, space, *args, **kwargs):
         self.space = space
         super(Tile, self).__init__(space,
@@ -28,6 +30,7 @@ class Tile(entity.Entity):
                 width = Tile.SIZE,
                 height = Tile.SIZE,
                 friction = Tile.FRICTION,
+                collision_type = Tile.COLLISION_TYPE,
                 mass = Tile.MASS,
                 static = True,
                 texture=resources.box)

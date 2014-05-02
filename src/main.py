@@ -28,7 +28,7 @@ class Game(pyglet.window.Window):
     WINDOW_HEIGHT = 480
     WINDOW_DIM = (WINDOW_WIDTH, WINDOW_HEIGHT)
 
-    SCROLL_RATE = 6
+    SCROLL_RATE = 60
     SCROLL_DELAY = 2
     DROP_LINE_START = -150
 
@@ -116,6 +116,7 @@ class Game(pyglet.window.Window):
         # Create physics space
         self.space = pymunk.Space()
         self.space.gravity = Game.GRAVITY
+        game.bro.Bro.setup_collision_handlers(self.space)
 
         # Create first section
         self.entities = []
@@ -283,9 +284,12 @@ class Game(pyglet.window.Window):
         p = self.players[0]
         return p.active_bro()
 
-    def add_bro(self, player, y=100):
-        x = self.sections[0].first_tile_offset()
-        bro = game.bro.Bro(player, self.space, x=x, y=y)
+    def add_bro(self, player, x=0, y=100, last_tile=None):
+        #x = self.sections[0].first_tile_offset()
+        if last_tile is not None:
+            x = last_tile.x
+            y = last_tile.y + game.tile.Tile.SIZE
+        bro = game.bro.Bro(player, self.space, x=x, y=y, last_tile=last_tile)
         self.entities.append(bro)
         self.bros.append(bro)
 
@@ -309,7 +313,7 @@ class Game(pyglet.window.Window):
 
     def freeze_bro(self, bro):
         bro.freeze()
-        self.add_bro(bro.player)
+        self.add_bro(bro.player, last_tile = bro.last_tile)
 
     def push_section(self):
         section = game.section.Section(self.current_distance, self.space)

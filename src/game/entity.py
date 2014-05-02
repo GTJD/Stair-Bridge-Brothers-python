@@ -35,6 +35,8 @@ class Entity(rabbyt.Sprite):
 
     def __init__(self, 
             space, 
+            collision_type = 0,
+            group = 0,
             friction = pymunk.inf,
             mass = pymunk.inf,
             width = 0,
@@ -63,6 +65,7 @@ class Entity(rabbyt.Sprite):
         vs = [(-hw, hh), (hw, hh), (hw, -hh), (-hw, -hh)]
         shape = pymunk.Poly(body, vs)
         shape.friction = friction
+        shape.collision_type = collision_type
         space.add(shape)
 
         self.pymunk_shape = shape
@@ -72,6 +75,10 @@ class Entity(rabbyt.Sprite):
         # force static state update if not static
         self._static = True
         self.static = static
+
+        # allow access the the entity from the shape for body
+        self.pymunk_body.entity = self
+        self.pymunk_shape.entity = self
 
     def update(self, dt):
         self.x = self.pymunk_body.position.x

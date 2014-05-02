@@ -1,22 +1,27 @@
 import entity
+import tile
 import resources
+
+import weakref
 
 # An avatar controlled by a Player
 class Bro(entity.Entity):
 
     MASS = 10
-    FRICTION = 0.5
+    FRICTION = 0
     SIZE = 32 
 
     JUMP_VECTOR = (0, 2000)
     SPEED = 100
 
-    FROZEN_OPACITY = 0.8
     FREEZE_FADE = 0.3
+
+    COLLISION_TYPE = 2
+    FROZEN_COLLISION_TYPE = 3
 
     @property
     def color(self):
-        self._color 
+        return self._color 
 
     @color.setter
     def color(self, val):
@@ -32,12 +37,27 @@ class Bro(entity.Entity):
         self.green = 1
         self.blue = 1
 
-    def __init__(self, player, space, x=0, y=100, *args, **kwargs):
+    @property
+    def last_tile(self):
+        if self._last_tile is None:
+            return None
+        else:
+            return self._last_tile()
+
+    @last_tile.setter
+    def last_tile(self, val):
+        if val is None:
+            self._last_tile = None
+        else:
+            self._last_tile = weakref.ref(val)
+
+    def __init__(self, player, space, x=0, y=0, last_tile=None, *args, **kwargs):
         super(Bro, self).__init__(space, 
                 x = x,
                 y = y,
                 mass = Bro.MASS,
                 friction = Bro.FRICTION,
+                collision_type = Bro.COLLISION_TYPE,
                 width = Bro.SIZE,
                 height = Bro.SIZE,
                 texture = resources.box)
@@ -45,7 +65,9 @@ class Bro(entity.Entity):
         self.color = player.color
         self.dead = False
         self.frozen = False
+        self.last_tile = last_tile
         self.player.bros.append(self)
+        self.in_air = True
 
         # Model state
         self.jumping = False
@@ -74,6 +96,9 @@ class Bro(entity.Entity):
         self.player.freezes += 1
 
         self.stop()
+
+        # set collision type for physics callbacks
+        self.pymunk_shape.collision_type = Bro.FROZEN_COLLISION_TYPE
 
         # Fade sprite
         self.red += Bro.FREEZE_FADE
@@ -117,3 +142,51 @@ class Bro(entity.Entity):
         self.stop_right()
         self.stop_left()
 
+    @staticmethod
+    def setup_collision_handlers(space):
+        space.collision_bias = 0
+        # custom collsion handlers
+        space.add_collision_handler(
+                Bro.COLLISION_TYPE, 
+                tile.Tile.COLLISION_TYPE,
+                #begin = Bro.register_last_tile_collision_handler,
+                pre_solve = Bro.seperate_from_tile_collision_handler,
+                separate = Bro.prevent_jump_collision_handler
+                )
+
+    @staticmethod
+    def seperate_from_tile_collision_handler(space, arbiter):
+        bro_shape = arbiter.shapes[0]
+        body = bro_shape.body
+        contact = arbiter.contacts[0]
+        contact.normal.x = round(contact.normal.x, 1)
+        contact.normal.y = round(contact.normal.y, 1)
+        if contact.normal.x != 0:
+            body.velocity.x = -contact.normal.x
+
+        bro = bro_shape.entity
+        handle = True
+        return handle
+
+    @staticmethod
+    def allow_jump_collision_handler(space, arbiter):
+        pass
+
+    @staticmethod
+    def prevent_jump_collision_handler(space, arbiter):
+        return True
+
+    @staticmethod
+    def register_last_tile_collision_handler(space, arbiter):
+        # Only record the tile if we are landing on top of it
+        print(arbiter.contacts)
+        normal = arbiter.contacts[0].normal
+        # This doesn't take rotation into account
+        contact.distance = round(contact.distance, 1)
+        if normal.y < 0 :
+            bro_shape = arbiter.shapes[0]
+            tile_shape = arbiter.shapes[0]
+            bro = bro_shape.entity
+            tile = tile_shape.entity
+            bro.last_tile = tile
+        return True

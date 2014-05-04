@@ -7,8 +7,6 @@ from OpenGL.GL import *
 
 from collections import deque
 
-# Constants
-
 # Add tuple element-wise
 def addt(a, b):
     return (map(sum,zip(a,b)))
@@ -28,7 +26,7 @@ class Game(pyglet.window.Window):
     WINDOW_HEIGHT = 480
     WINDOW_DIM = (WINDOW_WIDTH, WINDOW_HEIGHT)
 
-    SCROLL_RATE = 60
+    SCROLL_RATE = 6
     SCROLL_DELAY = 2
     DROP_LINE_START = -150
 
@@ -115,6 +113,8 @@ class Game(pyglet.window.Window):
 
         # Create physics space
         self.space = pymunk.Space()
+        # Instantly correct collisions
+        #self.space.collision_bias = 0
         self.space.gravity = Game.GRAVITY
         game.bro.Bro.setup_collision_handlers(self.space)
 
@@ -284,12 +284,12 @@ class Game(pyglet.window.Window):
         p = self.players[0]
         return p.active_bro()
 
-    def add_bro(self, player, x=0, y=100, last_tile=None):
+    def add_bro(self, player, old_bro=None, x=0, y=100):
         #x = self.sections[0].first_tile_offset()
-        if last_tile is not None:
-            x = last_tile.x
-            y = last_tile.y + game.tile.Tile.SIZE
-        bro = game.bro.Bro(player, self.space, x=x, y=y, last_tile=last_tile)
+        if old_bro is not None:
+            x = old_bro.last_tile.x
+            y = old_bro.last_tile.y + game.tile.Tile.SIZE
+        bro = game.bro.Bro(player, self.space, x=x, y=y, old_bro=old_bro)
         self.entities.append(bro)
         self.bros.append(bro)
 
@@ -312,8 +312,8 @@ class Game(pyglet.window.Window):
         return False
 
     def freeze_bro(self, bro):
+        self.add_bro(bro.player, old_bro=bro)
         bro.freeze()
-        self.add_bro(bro.player, last_tile = bro.last_tile)
 
     def push_section(self):
         section = game.section.Section(self.current_distance, self.space)
@@ -330,8 +330,16 @@ class Game(pyglet.window.Window):
     def remove_section(self, section):
         self.sections.remove(section)
 
-# Start game when running this file 
-if __name__ == '__main__':
+PROFILE = True
+
+def main():
     g = Game()
     g.start()
     pyglet.app.run()
+
+if PROFILE:
+    import cProfile
+    cProfile.run('main()')
+# Start game when running this file 
+elif __name__ == '__main__':
+    main()

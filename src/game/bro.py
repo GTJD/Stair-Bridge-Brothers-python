@@ -3,6 +3,7 @@ import tile
 import resources
 
 import weakref
+from pyglet.app import WeakSet
 
 # An avatar controlled by a Player
 class Bro(entity.Entity):
@@ -17,7 +18,6 @@ class Bro(entity.Entity):
     FREEZE_FADE = 0.3
 
     COLLISION_TYPE = 2
-    FROZEN_COLLISION_TYPE = 3
 
     @property
     def color(self):
@@ -51,7 +51,7 @@ class Bro(entity.Entity):
         else:
             self._last_tile = weakref.ref(val)
 
-    def __init__(self, player, space, x=0, y=0, last_tile=None, *args, **kwargs):
+    def __init__(self, player, space, x=0, y=0, old_bro=None, *args, **kwargs):
         super(Bro, self).__init__(space, 
                 x = x,
                 y = y,
@@ -65,14 +65,20 @@ class Bro(entity.Entity):
         self.color = player.color
         self.dead = False
         self.frozen = False
-        self.last_tile = last_tile
         self.player.bros.append(self)
-        self.in_air = True
 
         # Model state
-        self.jumping = False
         self.moving_left = False
         self.moving_right = False
+        self.collide_left = False
+        self.collide_right = False
+        self.shapes_below = WeakSet()
+
+        # get old bro values
+        if old_bro is not None:
+            self.moving_left = old_bro.moving_left
+            self.moving_right = old_bro.moving_right
+            self.last_tile = old_bro.last_tile
 
     def update(self, dt):
         super(Bro, self).update(dt)
@@ -98,7 +104,7 @@ class Bro(entity.Entity):
         self.stop()
 
         # set collision type for physics callbacks
-        self.pymunk_shape.collision_type = Bro.FROZEN_COLLISION_TYPE
+        #self.pymunk_shape.collision_type = Bro.FROZEN_COLLISION_TYPE
 
         # Fade sprite
         self.red += Bro.FREEZE_FADE
@@ -120,9 +126,11 @@ class Bro(entity.Entity):
         return not self.dead and not self.frozen
 
     def jump(self):
-        #if not self.jumping:
-        self.pymunk_body.apply_impulse(Bro.JUMP_VECTOR, (0, 0))
-            #self.jumping = True
+        if self.can_jump():
+            self.pymunk_body.apply_impulse(Bro.JUMP_VECTOR, (0, 0))
+
+    def can_jump(self):
+        return len(self.shapes_below) > 0
 
     def move_right(self):
         self.moving_right = True
@@ -143,50 +151,77 @@ class Bro(entity.Entity):
         self.stop_left()
 
     @staticmethod
-    def setup_collision_handlers(space):
-        space.collision_bias = 0
-        # custom collsion handlers
-        space.add_collision_handler(
+    def setup_collision_handlers(outer_space):
+
+        # When first colliding
+        def begin_handler(space, arbiter):
+            if object_below(arbiter):
+                bro = arbiter.shapes[0].entity
+                other_shape = arbiter.shapes[1]
+                # record this as an object under us
+                bro.shapes_below.add(other_shape)
+            return True
+
+        def tile_begin_handler(space, arbiter):
+            begin_handler(space, arbiter)
+            if object_below(arbiter):
+                # Record the last tile we were touching
+                bro = arbiter.shapes[0].entity
+                tile = arbiter.shapes[1].entity
+                bro.last_tile = tile
+            return True
+
+        def bro_begin_handler(space, arbiter):
+            return begin_handler(space, arbiter)
+
+        # Prior to solbing collision
+        def pre_solve_handler(space, arbiter):
+            contact = arbiter.contacts[0]
+
+            # Allow sliding down walls (sorta, we still catch on 'corners')
+            if round(contact.normal.x) == 1:
+                body = arbiter.shapes[0].body
+                bro = body.entity
+                #body.velocity.x = contact.normal.x * Bro.SPEED
+
+            return True
+
+        # When first seperating
+        def separate_handler(space, arbiter):
+            # One less object below
+            bro_shape = arbiter.shapes[0]
+            bro = bro_shape.entity
+            other_shape = arbiter.shapes[1]
+            other = other_shape.entity
+
+            # Remove object if it was below 
+            if other_shape in bro.shapes_below:
+                bro.shapes_below.remove(other_shape)
+
+            return True
+
+        def object_below(arbiter):
+            bro_shape = arbiter.shapes[0]
+            tile_shape = arbiter.shapes[1]
+            bro_body = bro_shape.body
+            tile_body = tile_shape.body
+            return bro_body.position.y > tile_body.position.y
+            #normal = arbiter.contacts[0].normal
+            #return round(normal.y) == -1
+
+        # Handlers between bros and tiles
+        outer_space.add_collision_handler(
                 Bro.COLLISION_TYPE, 
                 tile.Tile.COLLISION_TYPE,
-                #begin = Bro.register_last_tile_collision_handler,
-                pre_solve = Bro.seperate_from_tile_collision_handler,
-                separate = Bro.prevent_jump_collision_handler
-                )
+                begin = tile_begin_handler,
+                pre_solve = pre_solve_handler,
+                separate = separate_handler
+            )
 
-    @staticmethod
-    def seperate_from_tile_collision_handler(space, arbiter):
-        bro_shape = arbiter.shapes[0]
-        body = bro_shape.body
-        contact = arbiter.contacts[0]
-        contact.normal.x = round(contact.normal.x, 1)
-        contact.normal.y = round(contact.normal.y, 1)
-        if contact.normal.x != 0:
-            body.velocity.x = -contact.normal.x
-
-        bro = bro_shape.entity
-        handle = True
-        return handle
-
-    @staticmethod
-    def allow_jump_collision_handler(space, arbiter):
-        pass
-
-    @staticmethod
-    def prevent_jump_collision_handler(space, arbiter):
-        return True
-
-    @staticmethod
-    def register_last_tile_collision_handler(space, arbiter):
-        # Only record the tile if we are landing on top of it
-        print(arbiter.contacts)
-        normal = arbiter.contacts[0].normal
-        # This doesn't take rotation into account
-        contact.distance = round(contact.distance, 1)
-        if normal.y < 0 :
-            bro_shape = arbiter.shapes[0]
-            tile_shape = arbiter.shapes[0]
-            bro = bro_shape.entity
-            tile = tile_shape.entity
-            bro.last_tile = tile
-        return True
+        # Handlers between bros
+        outer_space.add_collision_handler(
+                Bro.COLLISION_TYPE, 
+                Bro.COLLISION_TYPE, 
+                begin = bro_begin_handler,
+                separate = separate_handler
+            )

@@ -46,6 +46,7 @@ class Tile(entity.Entity):
 
     def drop(self):
         self.static = False
+        self.untint_all()
         self.pymunk_body.apply_impulse(random.choice(Tile.DROP_IMPULSES), Tile.DROP_OFFSET)
 
     def set_last_tile_for(self, bro):
@@ -63,10 +64,17 @@ class Tile(entity.Entity):
             self.tints.remove(color)
         self._color()
 
+    def untint_all(self):
+        for tint in self.tints:
+            self.tints.remove(tint)
+        self._color()
+
     def _color(self):
+        # start with orig colour
         self.red = self.orig_color[0]
         self.green = self.orig_color[1]
         self.blue = self.orig_color[2]
+        # overlay each tint
         for tint in self.tints:
             t = tint.fade(Tile.BRIGHTNESS_RANGE).invert()
             self.red -= t.red

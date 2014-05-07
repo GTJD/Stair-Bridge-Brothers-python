@@ -25,19 +25,15 @@ class Game(pyglet.window.Window):
     WINDOW_WIDTH = 900
     WINDOW_HEIGHT = 480
     WINDOW_DIM = (WINDOW_WIDTH, WINDOW_HEIGHT)
+    WINDOW_FULLSCREEN = True
 
-    SCROLL_RATE = 6
-    SCROLL_ACCL = 1
+    SCROLL_RATE = 12
+    SCROLL_ACCL = 0.8
     SCROLL_DELAY = 2
     DROP_LINE_START = -150
 
     START_PROJECTION_X = -200
     START_PROJECTION_Y = -32
-    START_PROJECTION = (
-            START_PROJECTION_X, 
-            WINDOW_HEIGHT + START_PROJECTION_Y, 
-            WINDOW_WIDTH + START_PROJECTION_X, 
-            START_PROJECTION_Y)
 
     STATIC_PROJECTION = (0, WINDOW_HEIGHT, WINDOW_WIDTH, 0)
 
@@ -47,12 +43,13 @@ class Game(pyglet.window.Window):
     SCORE_SIZE = 36
     SCORE_OFFSET = 50
     SCORE_SPACING = (WINDOW_WIDTH / 3)
-    SCORE_Y = WINDOW_HEIGHT - 100
+    SCORE_Y_OFFSET = 100
 
     POPULATE_PADDING = 50
 
     KEY_BINDINGS = {
             'reset': pyglet.window.key.R,
+            'fullscreen': pyglet.window.key.F11,
             0: {
                 'left': pyglet.window.key.LEFT,
                 'right': pyglet.window.key.RIGHT,
@@ -74,13 +71,49 @@ class Game(pyglet.window.Window):
             }
 
     def __init__(self, *args, **kwargs):
-        super(Game, self).__init__(*args, **kwargs)
-        
-        # Window settings
-        self.width, self.height = Game.WINDOW_DIM
+        if Game.WINDOW_FULLSCREEN:
+            kwargs['fullscreen'] = True
+        else:
+            kwargs['width'] = Game.WINDOW_WIDTH
+            kwargs['height'] = Game.WINDOW_HEIGHT
+        super(Game, self).__init__( *args, **kwargs)
 
+        # prevent resize
+        self.resizeable = False
+        self.set_minimum_size(self.width, self.height)
+
+        self.set_mouse_visible = False
+
+        # setup full projection
+        self.set_static_projection()
+        
         # rabbyt set up
         rabbyt.set_default_attribs()
+
+        # game scenes, these include the main game and the supporting menu scenes
+        self.scenes = []
+        self.current_scene = None
+
+    def set_static_projection(self):
+        self.static_projection = (0, self.height, self.width, 0)
+
+    def start_projection(self):
+        window_ratio = float(self.width) / self.height
+        game_ratio = float(Game.WINDOW_WIDTH) / Game.WINDOW_HEIGHT
+        # limited by height
+        if window_ratio < game_ratio:
+            x = Game.START_PROJECTION_X
+            y = Game.START_PROJECTION_Y
+            width = Game.WINDOW_HEIGHT * game_ratio
+            height = Game.WINDOW_HEIGHT
+        # limited by width
+        else:
+            x = Game.START_PROJECTION_X
+            y = Game.START_PROJECTION_Y
+            width = Game.WINDOW_WIDTH
+            height = Game.WINDOW_WIDTH / game_ratio
+        print(width, height)
+        return (x, height + y, width + x, y)
 
     def start(self):
 
@@ -103,12 +136,10 @@ class Game(pyglet.window.Window):
                         #font_name = Game.SCORE_FONT, 
                         font_size = Game.SCORE_SIZE,
                         bold = True,
-                        color = label_color,
-                        x = i * Game.SCORE_SPACING + Game.SCORE_OFFSET,
-                        y = Game.SCORE_Y)
+                        color = label_color)
             self.score_labels.append(label)
             player.score_label = label
-
+        self.position_labels()
 
         # Create physics space
         self.space = pymunk.Space()
@@ -132,7 +163,7 @@ class Game(pyglet.window.Window):
         self.fps_display = pyglet.clock.ClockDisplay()
 
         # slowly panning camera
-        self.camera = Game.START_PROJECTION
+        self.camera = self.start_projection()
 
         # Game state
         self.scroll_delay = Game.SCROLL_DELAY
@@ -143,6 +174,11 @@ class Game(pyglet.window.Window):
         pyglet.clock.schedule(rabbyt.add_time)
         pyglet.clock.schedule(self.update)
         pyglet.clock.schedule_interval(self.update_physics, Game.PHYSICS_FRAMERATE)
+
+    def position_labels(self):
+        for i, label in enumerate(self.score_labels):
+            label.x = i * Game.SCORE_SPACING + Game.SCORE_OFFSET
+            label.y = self.height - Game.SCORE_Y_OFFSET
 
     def stop(self):
         pyglet.clock.unschedule(rabbyt.add_time)
@@ -228,17 +264,17 @@ class Game(pyglet.window.Window):
         rabbyt.clear()
 
         # Draw background
-        rabbyt.set_viewport(Game.WINDOW_DIM, projection=Game.STATIC_PROJECTION)
+        rabbyt.set_viewport((self.width, self.height), projection=self.static_projection)
         # reset opengl draw colour
         glColor(255, 255, 255, 1)
         Game.BACKGROUND.blit_tiled(0, 0, 0, self.width, self.height)
 
         # Draw transformed sprites
-        rabbyt.set_viewport(Game.WINDOW_DIM, projection=self.camera)
+        rabbyt.set_viewport((self.width, self.height), projection=self.camera)
         rabbyt.render_unsorted(self.entities)
 
         # Draw static sprites
-        rabbyt.set_viewport(Game.WINDOW_DIM, projection=Game.STATIC_PROJECTION)
+        rabbyt.set_viewport((self.width, self.height), projection=self.static_projection)
         self.fps_display.draw()
         for label in self.score_labels:
             label.draw()
@@ -247,6 +283,8 @@ class Game(pyglet.window.Window):
         # Global
         if symbol == Game.KEY_BINDINGS['reset']:
             self.reset()
+        elif symbol == Game.KEY_BINDINGS['fullscreen']:
+            self.toggle_fullscreen()
         # Player keys
         else: 
             for player in self.players:
@@ -320,8 +358,10 @@ class Game(pyglet.window.Window):
         return False
 
     def freeze_bro(self, bro):
-        self.add_bro(bro.player, old_bro=bro)
-        bro.freeze()
+        # Prevent us from freezing if there is not last tile or the tile has dropped
+        if bro.last_tile is not None and bro.last_tile.static:
+            self.add_bro(bro.player, old_bro=bro)
+            bro.freeze()
 
     def push_section(self):
         section = game.section.Section(self.current_distance, self.space)
@@ -338,6 +378,13 @@ class Game(pyglet.window.Window):
     def remove_section(self, section):
         self.sections.remove(section)
 
+    def toggle_fullscreen(self):
+        self.set_fullscreen(not self.fullscreen)
+        if not self.fullscreen:
+            self.set_size(Game.WINDOW_WIDTH, Game.WINDOW_HEIGHT)
+        self.set_static_projection()
+        self.position_labels()
+
 PROFILE = False
 
 def main():
@@ -345,9 +392,10 @@ def main():
     g.start()
     pyglet.app.run()
 
-if PROFILE:
-    import cProfile
-    cProfile.run('main()')
 # Start game when running this file 
-elif __name__ == '__main__':
-    main()
+if __name__ == '__main__':
+    if PROFILE:
+        import cProfile
+        cProfile.run('main()')
+    else:
+        main()

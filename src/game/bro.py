@@ -191,7 +191,7 @@ class Bro(entity.Entity):
 
                 # check if we should record the last tile for this bro
                 t = below.entity
-                if type(t) is tile.Tile:
+                if type(t) is tile.Tile and t.static:
                     bro.last_tile = t
 
         # When first seperating
@@ -207,13 +207,6 @@ class Bro(entity.Entity):
                 bro.shapes_below.remove(other_shape)
 
             return True
-
-        def shape_below(arbiter):
-            bro_shape = arbiter.shapes[0]
-            tile_shape = arbiter.shapes[1]
-            bro_body = bro_shape.body
-            tile_body = tile_shape.body
-            return bro_body.position.y > tile_body.position.y
 
         # Handlers between bros and tiles
         outer_space.add_collision_handler(

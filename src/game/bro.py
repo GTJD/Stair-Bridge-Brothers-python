@@ -18,6 +18,7 @@ class Bro(entity.Entity):
     FREEZE_FADE = 0.3
 
     COLLISION_TYPE = 2
+    FROZEN_COLLISION_TYPE = 3
 
     @property
     def color(self):
@@ -73,6 +74,7 @@ class Bro(entity.Entity):
         self.collide_left = False
         self.collide_right = False
         self.shapes_below = WeakSet()
+        self._last_tile = None
 
         # get old bro values
         if old_bro is not None:
@@ -154,17 +156,16 @@ class Bro(entity.Entity):
     def setup_collision_handlers(outer_space):
 
         # When first colliding
-        def begin_handler(space, arbiter):
-            if object_below(arbiter):
-                bro = arbiter.shapes[0].entity
-                other_shape = arbiter.shapes[1]
-                # record this as an object under us
-                bro.shapes_below.add(other_shape)
-            return True
+        #def begin_handler(space, arbiter):
+            #if object_below(arbiter):
+                #bro = arbiter.shapes[0].entity
+                #other_shape = arbiter.shapes[1]
+                ## record this as an object under us
+                #bro.shapes_below.add(other_shape)
+            #return True
 
         def tile_begin_handler(space, arbiter):
-            begin_handler(space, arbiter)
-            if object_below(arbiter):
+            if shape_below(arbiter):
                 # Record the last tile we were touching
                 bro = arbiter.shapes[0].entity
                 tile = arbiter.shapes[1].entity
@@ -178,6 +179,14 @@ class Bro(entity.Entity):
         def pre_solve_handler(space, arbiter):
             contact = arbiter.contacts[0]
 
+            a = arbiter.shapes[0]
+            b = arbiter.shapes[1]
+            # if a is above b
+            if a.body.position.y - b.body.position.y > 0:
+                record_shape_below(a, b)
+            else:
+                record_shape_below(b, a)
+
             # Allow sliding down walls (sorta, we still catch on 'corners')
             if round(contact.normal.x) == 1:
                 body = arbiter.shapes[0].body
@@ -185,6 +194,12 @@ class Bro(entity.Entity):
                 #body.velocity.x = contact.normal.x * Bro.SPEED
 
             return True
+
+        def record_shape_below(above, below):
+            bro = above.entity
+            if type(bro) is Bro and not bro.frozen:
+                # record this as an object under us
+                bro.shapes_below.add(below)
 
         # When first seperating
         def separate_handler(space, arbiter):
@@ -200,14 +215,18 @@ class Bro(entity.Entity):
 
             return True
 
-        def object_below(arbiter):
+        def shape_below(arbiter):
             bro_shape = arbiter.shapes[0]
             tile_shape = arbiter.shapes[1]
             bro_body = bro_shape.body
             tile_body = tile_shape.body
             return bro_body.position.y > tile_body.position.y
-            #normal = arbiter.contacts[0].normal
-            #return round(normal.y) == -1
+
+        # The difference between y positions of the colliding shapes
+        def y_diff(arbiter):
+            a = arbiter.shapes[0]
+            b = arbiter.shapes[1]
+            return a.body.position.y - b.body.position.y
 
         # Handlers between bros and tiles
         outer_space.add_collision_handler(
@@ -222,6 +241,7 @@ class Bro(entity.Entity):
         outer_space.add_collision_handler(
                 Bro.COLLISION_TYPE, 
                 Bro.COLLISION_TYPE, 
-                begin = bro_begin_handler,
+                #begin = bro_begin_handler,
+                pre_solve = pre_solve_handler,
                 separate = separate_handler
             )

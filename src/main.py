@@ -27,6 +27,7 @@ class Game(pyglet.window.Window):
     WINDOW_DIM = (WINDOW_WIDTH, WINDOW_HEIGHT)
 
     SCROLL_RATE = 6
+    SCROLL_ACCL = 1
     SCROLL_DELAY = 2
     DROP_LINE_START = -150
 
@@ -39,8 +40,6 @@ class Game(pyglet.window.Window):
             START_PROJECTION_Y)
 
     STATIC_PROJECTION = (0, WINDOW_HEIGHT, WINDOW_WIDTH, 0)
-
-    PROJECTION_SCROLL = (SCROLL_RATE, 0, SCROLL_RATE, 0) 
 
     SCORE_FONT = 'monospace'
     SCORE_ALIVE_ALPHA =  255
@@ -137,6 +136,7 @@ class Game(pyglet.window.Window):
 
         # Game state
         self.scroll_delay = Game.SCROLL_DELAY
+        self.scroll_rate =  Game.SCROLL_RATE
         self.drop_line = Game.DROP_LINE_START
 
         # Schedule updating game
@@ -159,17 +159,7 @@ class Game(pyglet.window.Window):
 
     def update(self, dt):
 
-        # Scroll viewport or decrement scroll delay
-        if self.scroll_delay > 0:
-            self.scroll_delay -= dt
-            dscroll = max(0, dt - self.scroll_delay)
-        else:
-            dscroll = dt
-
-        dcamera = Game.get_scroll(dscroll) 
-        self.camera = addt(self.camera, dcamera)
-
-        self.drop_line += dscroll * Game.SCROLL_RATE
+        self.scroll(dt)
 
         # update entities
         for entity in self.entities:
@@ -203,6 +193,28 @@ class Game(pyglet.window.Window):
         while self.current_distance * game.tile.Tile.SIZE < self.populate_distance():
             self.push_section()
 
+    def scroll(self, dt):
+        # Scroll viewport or decrement scroll delay
+        if self.scroll_delay > 0:
+            self.scroll_delay -= dt
+            dscroll = max(0, dt - self.scroll_delay)
+        else:
+            dscroll = dt
+
+        # Accelerate scrolling
+        self.scroll_rate += Game.SCROLL_ACCL * dscroll
+
+        # move camera projection
+        dcamera = Game.get_scroll(dscroll, self.scroll_rate) 
+        self.camera = addt(self.camera, dcamera)
+
+        # move line that drops entities
+        self.drop_line += dscroll * self.scroll_rate
+
+    @staticmethod
+    def get_scroll(dt, rate):
+        return (map(lambda x: x * rate * dt, (1, 0, 1, 0)))
+
     def update_physics(self, dt):
         self.space.step(dt)
 
@@ -211,10 +223,6 @@ class Game(pyglet.window.Window):
 
     def populate_distance(self):
         return self.camera_distance() + Game.POPULATE_PADDING
-
-    @staticmethod
-    def get_scroll(dt):
-        return (map(lambda x: x * dt, Game.PROJECTION_SCROLL))
 
     def on_draw(self):
         rabbyt.clear()
@@ -330,7 +338,7 @@ class Game(pyglet.window.Window):
     def remove_section(self, section):
         self.sections.remove(section)
 
-PROFILE = True
+PROFILE = False
 
 def main():
     g = Game()

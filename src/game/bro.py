@@ -137,6 +137,9 @@ class Bro(entity.Entity):
     def jump(self):
         if self.can_jump():
             self.pymunk_body.apply_impulse(Bro.JUMP_VECTOR, (0, 0))
+            # clear the shapes below set 
+            for shape in self.shapes_below:
+                self.shapes_below.remove(shape)
 
     def can_jump(self):
         return len(self.shapes_below) > 0

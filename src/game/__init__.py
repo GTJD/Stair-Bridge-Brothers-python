@@ -4,5 +4,6 @@ import color
 import entity
 import player
 import resources
+import scene
 import section
 import tile

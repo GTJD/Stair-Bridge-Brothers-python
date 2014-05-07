@@ -64,3 +64,6 @@ class Section(object):
     def first_tile_offset(self):
         min_tile = min(self.tiles, key = attrgetter('x'))
         return min_tile.x
+
+    def active_tiles(self):
+        return [tile for tile in self.tiles if tile.static]

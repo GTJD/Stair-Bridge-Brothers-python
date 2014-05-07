@@ -1,5 +1,6 @@
 import entity
 import resources
+from pyglet.app import WeakSet
 
 import random
 
@@ -38,11 +39,37 @@ class Tile(entity.Entity):
         # random colour
         if random.random() < Tile.WHITE_RATIO:
             brightness = random.random() % Tile.BRIGHTNESS_RANGE + Tile.BRIGHTNESS_MIN
-            self.red = brightness
-            self.green = brightness
-            self.blue = brightness
+            self.rgb = brightness, brightness, brightness
+
+        self.orig_color = self.rgb
+        self.tints = WeakSet()
 
     def drop(self):
         self.static = False
         self.pymunk_body.apply_impulse(random.choice(Tile.DROP_IMPULSES), Tile.DROP_OFFSET)
+
+    def set_last_tile_for(self, bro):
+        self.tint(bro.color)
+
+    def unset_last_tile_for(self, bro):
+        self.untint(bro.color)
+
+    def tint(self, color):
+        self.tints.add(color)
+        self._color()
+
+    def untint(self, color):
+        if color in self.tints:
+            self.tints.remove(color)
+        self._color()
+
+    def _color(self):
+        self.red = self.orig_color[0]
+        self.green = self.orig_color[1]
+        self.blue = self.orig_color[2]
+        for tint in self.tints:
+            t = tint.fade(Tile.BRIGHTNESS_RANGE).invert()
+            self.red -= t.red
+            self.green -= t.green
+            self.blue -= t.blue
 

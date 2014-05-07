@@ -47,10 +47,15 @@ class Bro(entity.Entity):
 
     @last_tile.setter
     def last_tile(self, val):
+        # untint old last tile
+        if self._last_tile is not None:
+            self._last_tile().unset_last_tile_for(self)
+
         if val is None:
             self._last_tile = None
         else:
             self._last_tile = weakref.ref(val)
+            self._last_tile().set_last_tile_for(self)
 
     def __init__(self, player, space, x=0, y=0, old_bro=None, *args, **kwargs):
         super(Bro, self).__init__(space, 
@@ -121,6 +126,8 @@ class Bro(entity.Entity):
         self.dead = True
         if not self.frozen:
             self.player.deaths += 1
+        # unset last tile
+        self.last_tile = None
         # remove body from physics space
         self.space.remove(self.pymunk_body, self.pymunk_shape)
 
@@ -155,26 +162,6 @@ class Bro(entity.Entity):
     @staticmethod
     def setup_collision_handlers(outer_space):
 
-        # When first colliding
-        #def begin_handler(space, arbiter):
-            #if object_below(arbiter):
-                #bro = arbiter.shapes[0].entity
-                #other_shape = arbiter.shapes[1]
-                ## record this as an object under us
-                #bro.shapes_below.add(other_shape)
-            #return True
-
-        def tile_begin_handler(space, arbiter):
-            if shape_below(arbiter):
-                # Record the last tile we were touching
-                bro = arbiter.shapes[0].entity
-                tile = arbiter.shapes[1].entity
-                bro.last_tile = tile
-            return True
-
-        def bro_begin_handler(space, arbiter):
-            return begin_handler(space, arbiter)
-
         # Prior to solbing collision
         def pre_solve_handler(space, arbiter):
             contact = arbiter.contacts[0]
@@ -184,6 +171,7 @@ class Bro(entity.Entity):
             # if a is above b
             if a.body.position.y - b.body.position.y > 0:
                 record_shape_below(a, b)
+            # otherwise b is above a
             else:
                 record_shape_below(b, a)
 
@@ -200,6 +188,11 @@ class Bro(entity.Entity):
             if type(bro) is Bro and not bro.frozen:
                 # record this as an object under us
                 bro.shapes_below.add(below)
+
+                # check if we should record the last tile for this bro
+                t = below.entity
+                if type(t) is tile.Tile:
+                    bro.last_tile = t
 
         # When first seperating
         def separate_handler(space, arbiter):
@@ -222,17 +215,10 @@ class Bro(entity.Entity):
             tile_body = tile_shape.body
             return bro_body.position.y > tile_body.position.y
 
-        # The difference between y positions of the colliding shapes
-        def y_diff(arbiter):
-            a = arbiter.shapes[0]
-            b = arbiter.shapes[1]
-            return a.body.position.y - b.body.position.y
-
         # Handlers between bros and tiles
         outer_space.add_collision_handler(
                 Bro.COLLISION_TYPE, 
                 tile.Tile.COLLISION_TYPE,
-                begin = tile_begin_handler,
                 pre_solve = pre_solve_handler,
                 separate = separate_handler
             )
@@ -241,7 +227,6 @@ class Bro(entity.Entity):
         outer_space.add_collision_handler(
                 Bro.COLLISION_TYPE, 
                 Bro.COLLISION_TYPE, 
-                #begin = bro_begin_handler,
                 pre_solve = pre_solve_handler,
                 separate = separate_handler
             )

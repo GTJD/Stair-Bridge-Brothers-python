@@ -24,6 +24,6 @@ class Color(object):
         b = fade + self.blue
         return Color(r, g, b)
 
-RED = Color(1, 0.25, 0.25)
-BLUE = Color(0.25, 0.25, 1)
+RED = Color(0.1, 0.1, 1)
+BLUE = Color(0.1, 0.8, 0.1)
 YELLOW = Color(1, 1, 0.25)

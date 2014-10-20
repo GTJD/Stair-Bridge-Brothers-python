@@ -165,6 +165,8 @@ class Bro(entity.Entity):
     @staticmethod
     def setup_collision_handlers(outer_space):
 
+        required_overlap = 15
+
         # Prior to solbing collision
         def pre_solve_handler(space, arbiter):
             contact = arbiter.contacts[0]
@@ -172,11 +174,12 @@ class Bro(entity.Entity):
             a = arbiter.shapes[0]
             b = arbiter.shapes[1]
             # if a is above b
-            if a.body.position.y - b.body.position.y > 0:
-                record_shape_below(a, b)
-            # otherwise b is above a
-            else:
-                record_shape_below(b, a)
+            if abs(a.body.position.x - b.body.position.x) < required_overlap:
+                if a.body.position.y > b.body.position.y:
+                    record_shape_below(a, b)
+                # otherwise b is above a
+                else:
+                    record_shape_below(b, a)
 
             # Allow sliding down walls (sorta, we still catch on 'corners')
             if round(contact.normal.x) == 1:

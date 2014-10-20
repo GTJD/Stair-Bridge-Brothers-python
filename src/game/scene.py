@@ -52,8 +52,8 @@ class GameScene(Scene):
 
     DEATH_Y = -80
 
-    SCROLL_RATE = 12
-    SCROLL_ACCL = 0.8
+    SCROLL_RATE = 10
+    SCROLL_ACCL = 0.4
     SCROLL_DELAY = 2
     DROP_LINE_START = -150
 
@@ -68,7 +68,7 @@ class GameScene(Scene):
     SCORE_DEAD_ALPHA = int(0.5 * 255)
     SCORE_SIZE = 36
     SCORE_OFFSET = 50
-    SCORE_SPACING = 1 / 3
+    SCORE_SPACING = 1.0 / 3
     SCORE_Y_OFFSET = 100
 
     POPULATE_PADDING = 50
@@ -158,14 +158,14 @@ class GameScene(Scene):
         width = GameScene.GAME_WIDTH    
         height = GameScene.GAME_HEIGHT
         right = width + left
-        top = height + right
-        print(float(width) / height)
+        top = height + bottom
+        #print(float(width) / height)
         return (left, top, right, bottom)
     
     def draw_area(self):
         window_ratio = float(self.game.width) / self.game.height
         game_ratio = float(GameScene.GAME_WIDTH) / GameScene.GAME_HEIGHT
-        print("g: %s, w: %s" % (game_ratio, window_ratio))
+        #print("g: %s, w: %s" % (game_ratio, window_ratio))
         # limited by height
         if window_ratio > game_ratio:
             width = self.game.height * game_ratio
@@ -180,13 +180,13 @@ class GameScene(Scene):
         right = int(left + width)
         #print(self.game.get_size())
         #print(left, bottom, width, height)
-        print (left, top, right, bottom)
+        #print (left, top, right, bottom)
         #return (left, top, right, bottom)
         return (width, height)
 
     def position_labels(self):
         for i, label in enumerate(self.score_labels):
-            label.x = i * GameScene.SCORE_SPACING + GameScene.SCORE_OFFSET
+            label.x = i * GameScene.SCORE_SPACING * self.game.width + GameScene.SCORE_OFFSET
             label.y = self.game.height - GameScene.SCORE_Y_OFFSET
 
     def stop(self):
@@ -221,7 +221,8 @@ class GameScene(Scene):
                 self.entities.remove(tile)
             # Drop tiles behind drop line
             elif tile.x < self.drop_line:
-                tile.drop()
+                pass
+                #tile.drop()
 
         # delete empty sections
         if len(self.sections[0].active_tiles()) == 0:
